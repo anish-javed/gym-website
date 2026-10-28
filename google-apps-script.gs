@@ -10,10 +10,19 @@
  *  - "join": makes a unique member ID like PF-1042, saves one new row with Status "Pending"
  *    and sends the member ID back to the website.
  *  - "txid": finds the row by member ID, saves the transaction ID and sets Status "Awaiting check".
- *    A transaction ID that is already used in another row is refused.
+ *    Then it looks the transaction up on the Solana blockchain (automatic payment check):
+ *      Paid               -> the right amount of USDT really arrived in the gym wallet
+ *      Rejected           -> something is wrong; the reason is written in "Check Result"
+ *      Awaiting check     -> not on the blockchain yet; checked again every 5 minutes
+ *      Needs manual check -> still not found after 24 hours; please check it yourself
+ *    A transaction ID that is already used in another row is rejected ("Already used").
  *  - After a row is saved, an email alert goes to the script owner (your own Google account,
  *    found automatically - no email address is written in this file).
  *    If the email fails, the row is still saved.
+ *
+ * Run setupAutoCheck() once from the editor to turn on the 5-minute re-check.
+ * The blockchain address (RPC) can be changed in Project Settings > Script Properties > RPC_URL,
+ * so a private key/link never has to be written in this public file.
  *
  * Steps to install are in SETUP-GOOGLE-SHEET.md.
  * IMPORTANT: create this script from INSIDE your Google Sheet:
@@ -46,34 +55,59 @@ var HEADERS = [
   'Consent',                         // M
   'Status',                          // N
   'Transaction ID',                  // O
-  'TxID Time (Pakistan time)'        // P
+  'TxID Time (Pakistan time)',       // P
+  'Check Result',                    // Q
+  'Received USDT',                   // R
+  'Check Time (Pakistan time)'       // S
 ];
 var COL = {
   ID: 1, TIME: 2, NAME: 3, PHONE: 4, GENDER: 5, TRAINER: 6, MONTHS: 7, START: 8, TOTAL: 9,
-  USDT: 10, TEST: 11, RATE: 12, CONSENT: 13, STATUS: 14, TXID: 15, TXTIME: 16
+  USDT: 10, TEST: 11, RATE: 12, CONSENT: 13, STATUS: 14, TXID: 15, TXTIME: 16,
+  RESULT: 17, RECEIVED: 18, CHECKTIME: 19
 };
 
 var STATUS_PENDING = 'Pending';
 var STATUS_AWAITING = 'Awaiting check';
-var STATUS_LIST = ['Pending', 'Awaiting check', 'Paid', 'Rejected'];   // dropdown in the Status column
+var STATUS_PAID = 'Paid';
+var STATUS_REJECTED = 'Rejected';
+var STATUS_MANUAL = 'Needs manual check';
+var STATUS_LIST = ['Pending', 'Awaiting check', 'Paid', 'Rejected', 'Needs manual check'];   // dropdown in the Status column
+
+/* ---------- Payment check settings ---------- */
+// Your wallet (the one in js/config.js) and the official USDT token on Solana.
+var WALLET_ADDRESS = '27dk1KWq6wEPDBk8y7Ugw2XDf8AnKJipe7jSPrHGBaQy';
+var USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
+// Free public Solana address. To use another provider, add RPC_URL in Script Properties instead.
+var DEFAULT_RPC_URL = 'https://api.mainnet-beta.solana.com';
+var TOLERANCE_USDT = 0.01;           // a payment may be up to 0.01 USDT short
+var TIME_GRACE_SECONDS = 60;         // blockchain clocks can be a few seconds off
+var GIVE_UP_HOURS = 24;              // after this, "Needs manual check"
+var MAX_RUN_MS = 4 * 60 * 1000;      // a 5-minute re-check run stops after 4 minutes
 
 /** Receives the data sent by the website. */
 function doPost(e) {
-  var lock = LockService.getScriptLock();
   try {
-    // If two people press Send at the same moment, wait in line (no mixed-up rows).
-    lock.waitLock(20000);
-
     var p = (e && e.parameter) ? e.parameter : {};
 
     // Spam robots fill the hidden "company_website" field. Pretend all is well, save nothing.
     if (p.company_website) return reply({ result: 'success', memberId: 'PF-0000' });
 
-    if (p.action === 'join') return handleJoin(p);
+    // If two people press Send at the same moment, they wait in line (no mixed-up rows).
+    // The payment check locks the sheet only while writing, so a slow blockchain never blocks others.
+    if (p.action === 'join') return withLock(function () { return handleJoin(p); });
     if (p.action === 'txid') return handleTxid(p);
     return reply({ result: 'error', message: 'Unknown action.' });
   } catch (err) {
     return reply({ result: 'error', message: 'Something went wrong. Please try again.' });
+  }
+}
+
+/** Runs fn while holding the script lock (one change to the sheet at a time). */
+function withLock(fn) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    return fn();
   } finally {
     try { lock.releaseLock(); } catch (ignore) {}
   }
@@ -184,68 +218,377 @@ function handleTxid(p) {
     return reply({ result: 'error', message: 'That does not look like a Solana transaction ID. Please copy it again.' });
   }
 
-  var sheet = getSheet();
-  var last = sheet.getLastRow();
-  if (last < 2) return reply({ result: 'error', message: 'We could not find that member ID.' });
-
-  var values = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
-  var rowIndex = -1;
-  var i;
-  for (i = 0; i < values.length; i++) {
-    if (String(values[i][COL.ID - 1]) === memberId) { rowIndex = i; break; }
+  // Step 1 (sheet locked): find the row, run the simple checks, save the TxID as "Awaiting check".
+  var prep = withLock(function () { return saveSubmittedTxid(memberId, txid, phone); });
+  if (prep.error) return reply({ result: 'error', message: prep.error });
+  if (prep.outcome) {                       // already used in another row: rejected straight away
+    notifyOwner(prep.member, txid, prep.outcome, true);
+    return outcomeReply(prep.outcome);
   }
-  if (rowIndex < 0) return reply({ result: 'error', message: 'We could not find that member ID.' });
 
-  var row = values[rowIndex];
+  // Step 2 (sheet NOT locked): ask the blockchain. This can take a few seconds.
+  var outcome = checkPayment(txid, prep.member.expectedUsdt, prep.member.joinMs);
+
+  // Step 3 (sheet locked again): save the result and email the owner.
+  var saved = saveOutcome(memberId, txid, outcome, true);
+  return outcomeReply(saved || outcome);
+}
+
+/**
+ * Saves a newly submitted transaction ID on the member's row.
+ * Returns { error } for a problem the member can fix, { member, outcome } when the TxID
+ * is already used in another row (row is set to Rejected), or { member } when the check can start.
+ */
+function saveSubmittedTxid(memberId, txid, phone) {
+  var sheet = getSheet();
+  var found = findMember(sheet, memberId);
+  if (!found) return { error: 'We could not find that member ID.' };
+  var row = found.row;
 
   // Extra check so nobody can attach a payment to somebody else's ID: the phone must match.
   if (digits(row[COL.PHONE - 1]).slice(-10) !== digits(phone).slice(-10)) {
-    return reply({ result: 'error', message: 'We could not match this member ID. Please call us.' });
+    return { error: 'We could not match this member ID. Please call us.' };
   }
 
-  // A transaction ID can be used only once.
-  for (i = 0; i < values.length; i++) {
-    if (i !== rowIndex && String(values[i][COL.TXID - 1]) === txid) {
-      return reply({ result: 'error', message: 'This transaction ID was already used. Please check it, or call us for help.' });
-    }
-  }
+  if (String(row[COL.STATUS - 1]) === STATUS_PAID) return { error: 'This membership is already confirmed. Thank you!' };
 
-  var status = String(row[COL.STATUS - 1]);
-  if (status === 'Paid') return reply({ result: 'error', message: 'This membership is already confirmed. Thank you!' });
-
-  var sheetRow = rowIndex + 2;
+  var member = memberInfo(row);
   var timestamp = pakistanNow();
-  sheet.getRange(sheetRow, COL.TXID).setValue(txid);
-  sheet.getRange(sheetRow, COL.STATUS).setValue(STATUS_AWAITING);
-  sheet.getRange(sheetRow, COL.TXTIME).setValue(timestamp);
-  SpreadsheetApp.flush();     // saved
 
+  // A transaction ID can be used only once. Do not copy it into this row (the other row keeps it).
+  var usedBy = usedInOtherRow(found.values, found.index, txid);
+  if (usedBy) {
+    writeCells(sheet, found.sheetRow, [
+      [COL.STATUS, STATUS_REJECTED],
+      [COL.RESULT, 'Already used (same TxID as ' + usedBy + ')'],
+      [COL.RECEIVED, ''],
+      [COL.CHECKTIME, timestamp]
+    ]);
+    SpreadsheetApp.flush();
+    return { member: member, outcome: { state: 'rejected', reason: 'Already used' } };
+  }
+
+  // A new TxID starts a new 24-hour waiting time. The same TxID again just checks again.
+  var cells = [
+    [COL.STATUS, STATUS_AWAITING],
+    [COL.RESULT, 'Checking the blockchain...'],
+    [COL.CHECKTIME, timestamp]
+  ];
+  if (String(row[COL.TXID - 1]) !== txid) {
+    cells.push([COL.TXID, txid], [COL.TXTIME, timestamp], [COL.RECEIVED, '']);
+  }
+  writeCells(sheet, found.sheetRow, cells);
+  SpreadsheetApp.flush();     // saved
+  return { member: member };
+}
+
+/** The website's answer: status is "paid", "rejected", "waiting" or "manual". */
+function outcomeReply(o) {
+  return reply({
+    result: 'success',
+    status: o.state,
+    reason: o.reason || '',
+    received: (o.received === undefined || o.received === null) ? '' : o.received
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* AUTOMATIC PAYMENT CHECK (Solana blockchain)                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Looks the transaction up on the blockchain and decides.
+ * expectedUsdt: the amount the member was asked to pay. joinMs: when they joined (milliseconds).
+ * Returns { state: 'paid' | 'rejected' | 'waiting' | 'manual', reason, received }.
+ */
+function checkPayment(txid, expectedUsdt, joinMs) {
+  var tx;
   try {
-    sendOwnerEmail(
-      'Transaction ID submitted: ' + memberId,
-      'A member sent their transaction ID. Please check the payment.\n\n' +
-      'Member ID: ' + memberId + '\n' +
-      'Name: ' + oneLine(row[COL.NAME - 1]) + '\n' +
-      'Phone: ' + oneLine(row[COL.PHONE - 1]) + '\n' +
-      'Expected USDT: ' + row[COL.USDT - 1] + (String(row[COL.TEST - 1]) === 'Yes' ? ' (TEST MODE)' : '') + '\n' +
-      'Time (Pakistan): ' + timestamp + '\n\n' +
+    tx = rpcCall('getTransaction', [txid, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0, commitment: 'confirmed' }]);
+  } catch (err) {
+    return { state: 'waiting', reason: 'Could not reach the blockchain (' + oneLine(err.message) + ')' };
+  }
+
+  // Not on the blockchain yet (or not confirmed yet). Try again later.
+  if (!tx || !tx.meta || !tx.blockTime) return { state: 'waiting', reason: 'Not found yet' };
+
+  // The transaction must have succeeded.
+  if (tx.meta.err !== null && tx.meta.err !== undefined) return { state: 'rejected', reason: 'Transaction failed', received: 0 };
+
+  // How much USDT arrived in the gym wallet (raw units: 1 USDT = 1,000,000).
+  var changes = tokenChanges(tx.meta);
+  var receivedRaw = 0;
+  changes.forEach(function (c) {
+    if (c.owner === WALLET_ADDRESS && c.mint === USDT_MINT) receivedRaw += c.raw;
+  });
+  var received = Number((receivedRaw / 1e6).toFixed(6));
+
+  if (receivedRaw <= 0) {
+    var otherTokenToUs = changes.some(function (c) { return c.owner === WALLET_ADDRESS && c.mint !== USDT_MINT && c.raw > 0; });
+    var usdtToSomeoneElse = changes.some(function (c) { return c.mint === USDT_MINT && c.raw > 0; });
+    if (otherTokenToUs) return { state: 'rejected', reason: 'Not USDT', received: 0 };
+    if (usdtToSomeoneElse) return { state: 'rejected', reason: 'Wrong wallet', received: 0 };
+    return { state: 'rejected', reason: 'Not USDT', received: 0 };
+  }
+
+  var expectedRaw = Math.round(Number(expectedUsdt) * 1e6);
+  if (!(expectedRaw > 0)) return { state: 'manual', reason: 'Expected USDT amount is missing in the sheet', received: received };
+  if (receivedRaw + Math.round(TOLERANCE_USDT * 1e6) < expectedRaw) {
+    return {
+      state: 'rejected',
+      reason: 'Amount too low (received ' + received + ' USDT, expected ' + (expectedRaw / 1e6).toFixed(2) + ' USDT)',
+      received: received
+    };
+  }
+
+  // The payment must be made after joining (stops someone reusing an old payment).
+  if (!isFinite(joinMs)) return { state: 'manual', reason: 'Join time in the sheet could not be read', received: received };
+  if (tx.blockTime * 1000 < joinMs - TIME_GRACE_SECONDS * 1000) {
+    return { state: 'rejected', reason: 'Sent before joining', received: received };
+  }
+
+  return { state: 'paid', reason: 'Payment confirmed', received: received };
+}
+
+/**
+ * Token balance changes in a transaction, from meta.preTokenBalances and meta.postTokenBalances.
+ * Returns [{ owner, mint, raw }] where raw = after - before (in the token's smallest unit).
+ */
+function tokenChanges(meta) {
+  var byIndex = {};
+  function add(list, sign) {
+    (list || []).forEach(function (b) {
+      var key = String(b.accountIndex);
+      var item = byIndex[key] || (byIndex[key] = { owner: b.owner || '', mint: b.mint || '', raw: 0 });
+      if (!item.owner && b.owner) item.owner = b.owner;
+      var amount = Number(b.uiTokenAmount && b.uiTokenAmount.amount);
+      if (isFinite(amount)) item.raw += sign * amount;
+    });
+  }
+  add(meta.preTokenBalances, -1);
+  add(meta.postTokenBalances, 1);
+  return Object.keys(byIndex).map(function (k) { return byIndex[k]; });
+}
+
+/**
+ * Saves a check result on the member's row (only if the row is still waiting for this TxID)
+ * and emails the owner on Paid, Rejected or Needs manual check.
+ * fromWebsite = true: the member just submitted, so a "still waiting" email is also sent (once per submission).
+ * Returns the saved outcome, or null if nothing was saved.
+ */
+function saveOutcome(memberId, txid, outcome, fromWebsite) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000);
+  } catch (busy) {
+    return null;                  // sheet busy: the row stays "Awaiting check" and the 5-minute check tries again
+  }
+  var member, saved = null;
+  try {
+    var sheet = getSheet();
+    var found = findMember(sheet, memberId);
+    if (!found) return null;
+    var row = found.row;
+    // Someone may have changed the row in the meantime (for example you marked it Paid by hand).
+    if (String(row[COL.TXID - 1]) !== txid || String(row[COL.STATUS - 1]) !== STATUS_AWAITING) return null;
+
+    if (outcome.state === 'paid' && usedInOtherRow(found.values, found.index, txid)) {
+      outcome = { state: 'rejected', reason: 'Already used', received: outcome.received };
+    }
+
+    var status = { paid: STATUS_PAID, rejected: STATUS_REJECTED, manual: STATUS_MANUAL, waiting: STATUS_AWAITING }[outcome.state];
+    var result = outcome.state === 'waiting' ? outcome.reason + ' - checking again every 5 minutes' : outcome.reason;
+    var cells = [[COL.STATUS, status], [COL.RESULT, result], [COL.CHECKTIME, pakistanNow()]];
+    if (outcome.received !== undefined && outcome.received !== null) cells.push([COL.RECEIVED, outcome.received]);
+    writeCells(sheet, found.sheetRow, cells);
+    SpreadsheetApp.flush();       // the row is saved from here on
+    member = memberInfo(row);
+    saved = outcome;
+  } finally {
+    try { lock.releaseLock(); } catch (ignore) {}
+  }
+
+  // Email after the lock is released. If the email fails, the row is still updated.
+  if (outcome.state !== 'waiting' || fromWebsite) notifyOwner(member, txid, outcome, fromWebsite);
+  return saved;
+}
+
+/**
+ * Re-checks every "Awaiting check" row. Runs every 5 minutes once you run setupAutoCheck().
+ * After 24 hours without an answer, the row becomes "Needs manual check".
+ */
+function recheckAwaitingPayments() {
+  var started = Date.now();
+  var sheet = getSheet();
+  var last = sheet.getLastRow();
+  if (last < 2) return;
+  var values = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+  var checked = 0;
+
+  for (var i = 0; i < values.length; i++) {
+    if (Date.now() - started > MAX_RUN_MS) break;     // the rest waits for the next run
+    var row = values[i];
+    if (String(row[COL.STATUS - 1]) !== STATUS_AWAITING) continue;
+    var txid = String(row[COL.TXID - 1]).trim();
+    if (!txid) continue;
+
+    if (checked > 0) Utilities.sleep(500);            // be gentle with the free blockchain service
+    checked++;
+
+    var member = memberInfo(row);
+    var outcome = checkPayment(txid, member.expectedUsdt, member.joinMs);
+    if (outcome.state === 'waiting') {
+      var since = parsePakistanTime(row[COL.TXTIME - 1]);
+      if (!isFinite(since)) since = member.joinMs;
+      if (isFinite(since) && Date.now() - since > GIVE_UP_HOURS * 3600 * 1000) {
+        outcome = { state: 'manual', reason: 'Not confirmed after ' + GIVE_UP_HOURS + ' hours (last answer: ' + outcome.reason + ')' };
+      }
+    }
+    saveOutcome(member.memberId, txid, outcome, false);
+  }
+}
+
+/**
+ * RUN THIS ONCE from the editor (select "setupAutoCheck" > Run).
+ * It turns on the automatic re-check every 5 minutes, adds the new columns to your sheet,
+ * and asks you to allow "connect to an external service" (the blockchain).
+ * Running it again is safe: it never makes two timers.
+ */
+function setupAutoCheck() {
+  getSheet();
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'recheckAwaitingPayments') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('recheckAwaitingPayments').timeBased().everyMinutes(5).create();
+
+  // Quick test that the blockchain can be reached.
+  try {
+    rpcCall('getSlot', []);
+    console.log('Done! The automatic payment check runs every 5 minutes, and the blockchain answered.');
+  } catch (err) {
+    console.log('The timer is on, but the blockchain did not answer: ' + err.message +
+      '. If this keeps happening, add RPC_URL in Script Properties (see SETUP-GOOGLE-SHEET.md).');
+  }
+}
+
+/** Sends one request to the Solana RPC. Tries once more if the service is busy. */
+function rpcCall(method, params) {
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    muteHttpExceptions: true,
+    payload: JSON.stringify({ jsonrpc: '2.0', id: 1, method: method, params: params })
+  };
+  for (var attempt = 1; attempt <= 2; attempt++) {
+    var res = UrlFetchApp.fetch(getRpcUrl(), options);
+    var code = res.getResponseCode();
+    if ((code === 429 || code >= 500) && attempt === 1) { Utilities.sleep(1500); continue; }
+    if (code !== 200) throw new Error('RPC answered ' + code);
+    var json = JSON.parse(res.getContentText());
+    if (json.error) throw new Error('RPC error ' + (json.error.message || json.error.code));
+    return json.result;
+  }
+}
+
+/** The RPC address: Script Properties > RPC_URL if you added one, otherwise the free public one. */
+function getRpcUrl() {
+  var custom = PropertiesService.getScriptProperties().getProperty('RPC_URL');
+  custom = custom ? String(custom).trim() : '';
+  return /^https:\/\//.test(custom) ? custom : DEFAULT_RPC_URL;
+}
+
+/** Emails the owner about a check result. If the email fails, nothing else is affected. */
+function notifyOwner(member, txid, outcome, fromWebsite) {
+  if (!member) return;
+  try {
+    var subject, intro;
+    if (outcome.state === 'paid') {
+      subject = 'Payment confirmed: ' + member.memberId + ' (' + outcome.received + ' USDT)';
+      intro = 'The blockchain check found the payment. Status is now "' + STATUS_PAID + '".';
+    } else if (outcome.state === 'rejected') {
+      subject = 'Payment rejected: ' + member.memberId + ' - ' + oneLine(outcome.reason);
+      intro = 'The blockchain check found a problem. Status is now "' + STATUS_REJECTED + '". The member was asked to contact you.';
+    } else if (outcome.state === 'manual') {
+      subject = 'Needs manual check: ' + member.memberId;
+      intro = 'The automatic check could not decide. Please check this payment yourself, then set the Status to Paid or Rejected.';
+    } else if (fromWebsite) {
+      subject = 'Transaction ID submitted: ' + member.memberId + ' (waiting for the blockchain)';
+      intro = 'A member sent their transaction ID. It is not on the blockchain yet, so it will be checked again every 5 minutes.';
+    } else {
+      return;
+    }
+    sendOwnerEmail(subject,
+      intro + '\n\n' +
+      'Member ID: ' + member.memberId + '\n' +
+      'Name: ' + oneLine(member.name) + '\n' +
+      'Phone: ' + oneLine(member.phone) + '\n' +
+      'Expected USDT: ' + member.expectedUsdt + (member.test ? ' (TEST MODE)' : '') + '\n' +
+      'Received USDT: ' + (outcome.received === undefined || outcome.received === null ? '-' : outcome.received) + '\n' +
+      'Check result: ' + oneLine(outcome.reason) + '\n' +
+      'Time (Pakistan): ' + pakistanNow() + '\n\n' +
       'Transaction ID:\n' + txid + '\n\n' +
-      'Check it here: https://solscan.io/tx/' + txid + '\n\n' +
-      'Status is now "' + STATUS_AWAITING + '". After you confirm the money arrived, change it to "Paid" in the sheet.\n' +
+      'See it here: https://solscan.io/tx/' + txid + '\n' +
       'Open the Google Sheet: ' + SpreadsheetApp.getActiveSpreadsheet().getUrl()
     );
   } catch (mailErr) {
     console.error('Email alert failed: ' + mailErr);
   }
+}
 
-  return reply({ result: 'success' });
+/** Finds a member's row. Returns { values, index, row, sheetRow } or null. */
+function findMember(sheet, memberId) {
+  var last = sheet.getLastRow();
+  if (last < 2) return null;
+  var values = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][COL.ID - 1]) === memberId) {
+      return { values: values, index: i, row: values[i], sheetRow: i + 2 };
+    }
+  }
+  return null;
+}
+
+/** The member ID of another row that already has this TxID, or '' if none. */
+function usedInOtherRow(values, index, txid) {
+  for (var i = 0; i < values.length; i++) {
+    if (i !== index && String(values[i][COL.TXID - 1]).trim() === txid) return String(values[i][COL.ID - 1]) || 'another row';
+  }
+  return '';
+}
+
+/** The details of a row that the check and the emails need. */
+function memberInfo(row) {
+  return {
+    memberId: String(row[COL.ID - 1]),
+    name: row[COL.NAME - 1],
+    phone: row[COL.PHONE - 1],
+    expectedUsdt: Number(row[COL.USDT - 1]),
+    test: String(row[COL.TEST - 1]) === 'Yes',
+    joinMs: parsePakistanTime(row[COL.TIME - 1])
+  };
+}
+
+/** Writes several [column, value] pairs on one row. */
+function writeCells(sheet, sheetRow, cells) {
+  cells.forEach(function (c) { sheet.getRange(sheetRow, c[0]).setValue(c[1]); });
+}
+
+/** "2026-10-27 18:05:00" (Pakistan time) -> milliseconds. Pakistan is UTC+5 all year. */
+function parsePakistanTime(value) {
+  if (value instanceof Date) return value.getTime();
+  var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(value || ''));
+  if (!m) return NaN;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4] - 5, +m[5], +(m[6] || 0));
 }
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
 
-/** Finds the "Members" tab (creates it if missing) and adds the header row if the tab is empty. */
+/**
+ * Finds the "Members" tab (creates it if missing) and adds the header row if the tab is empty.
+ * An older sheet (made before the payment check) gets the new columns added automatically.
+ */
 function getSheet() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(TAB_NAME) || ss.insertSheet(TAB_NAME);
@@ -254,15 +597,26 @@ function getSheet() {
     sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold').setBackground('#0B0C0D').setFontColor('#C8FF1F');
     sheet.setFrozenRows(1);
     // Keep these columns as plain text so phone numbers, dates and transaction IDs are never changed.
-    [COL.TIME, COL.PHONE, COL.START, COL.TXID, COL.TXTIME].forEach(function (c) {
+    [COL.TIME, COL.PHONE, COL.START, COL.TXID, COL.TXTIME, COL.CHECKTIME].forEach(function (c) {
       sheet.getRange(2, c, sheet.getMaxRows() - 1, 1).setNumberFormat('@');
     });
-    // Status dropdown, so you can change it to "Paid" with one click.
-    var rule = SpreadsheetApp.newDataValidation().requireValueInList(STATUS_LIST, true).setAllowInvalid(true).build();
-    sheet.getRange(2, COL.STATUS, sheet.getMaxRows() - 1, 1).setDataValidation(rule);
+    setStatusDropdown(sheet);
     sheet.autoResizeColumns(1, HEADERS.length);
+  } else if (sheet.getLastColumn() < HEADERS.length) {
+    var from = sheet.getLastColumn() + 1;
+    sheet.getRange(1, from, 1, HEADERS.length - from + 1).setValues([HEADERS.slice(from - 1)])
+      .setFontWeight('bold').setBackground('#0B0C0D').setFontColor('#C8FF1F');
+    sheet.getRange(2, COL.CHECKTIME, sheet.getMaxRows() - 1, 1).setNumberFormat('@');
+    setStatusDropdown(sheet);     // adds "Needs manual check" to the list
+    sheet.autoResizeColumns(from, HEADERS.length - from + 1);
   }
   return sheet;
+}
+
+/** Status dropdown, so you can change it to "Paid" with one click. */
+function setStatusDropdown(sheet) {
+  var rule = SpreadsheetApp.newDataValidation().requireValueInList(STATUS_LIST, true).setAllowInvalid(true).build();
+  sheet.getRange(2, COL.STATUS, sheet.getMaxRows() - 1, 1).setDataValidation(rule);
 }
 
 /** PF-1001, PF-1002, ... The next number after the highest one already in the sheet. */

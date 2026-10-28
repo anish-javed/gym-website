@@ -218,16 +218,20 @@
 
   function fail(code, message) { var e = new Error(message || code); e.code = code; return e; }
 
-  function sendToSheet(data) {
+  function sendToSheet(data, timeoutMs) {
     if (!isConnected()) {
       if (DEMO && data.action === 'join') return Promise.resolve({ result: 'success', memberId: 'PF-1000' });
-      if (DEMO && data.action === 'txid') return Promise.resolve({ result: 'success' });
+      if (DEMO && data.action === 'txid') {
+        return new Promise(function (resolve) {
+          setTimeout(function () { resolve({ result: 'success', status: 'paid', reason: 'Payment confirmed' }); }, 1500);
+        });
+      }
       return Promise.reject(fail('NOT_CONNECTED'));
     }
     var fd = new FormData();
     Object.keys(data).forEach(function (k) { fd.append(k, data[k]); });
     var ctrl = window.AbortController ? new AbortController() : null;
-    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 25000);
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, timeoutMs || 25000);
     return fetch(SHEET_URL.trim(), { method: 'POST', body: fd, signal: ctrl ? ctrl.signal : undefined })
       .then(function (res) {
         clearTimeout(timer);
@@ -408,11 +412,70 @@
   wireCopy($('copyWallet'), function () { return WALLET_ADDRESS; }, 'Copied!');
   wireCopy($('copyAmount'), function () { return $('payAmount').textContent; }, 'Copied!');
 
+  /* ----- result of the blockchain check ----- */
+  function txState(pay) {
+    if (pay.txStatus) return pay.txStatus;
+    return pay.txSent ? 'waiting' : '';          // saved by an older version of this page
+  }
+
+  function whatsappLink() {
+    var d = String(PHONE_TEXT).replace(/\D/g, '');
+    if (d.charAt(0) === '0') d = '92' + d.slice(1);
+    return 'https://wa.me/' + d;
+  }
+
+  function confettiHtml() {
+    if (PF.reduce()) return '';
+    var colors = ['#c8ff1f', '#f3f5f6', '#9fe600', '#ffd23f', '#5aa7ff'];
+    var count = window.matchMedia && window.matchMedia('(max-width: 820px)').matches ? 26 : 48;
+    var html = '';
+    for (var i = 0; i < count; i++) {
+      html += '<i style="--x:' + (Math.random() * 100).toFixed(1) + '%;--d:' + (Math.random() * 0.9).toFixed(2) +
+        's;--t:' + (1.8 + Math.random() * 1.6).toFixed(2) + 's;--r:' + Math.round(Math.random() * 720 - 360) +
+        'deg;--c:' + colors[i % colors.length] + '"></i>';
+    }
+    return '<div class="confetti" aria-hidden="true">' + html + '</div>';
+  }
+
+  function paintResult(state, reason, pay, celebrate) {
+    var box = $('txResult');
+    if (!state) { box.hidden = true; box.innerHTML = ''; return; }
+    var html;
+    if (state === 'paid') {
+      html = '<div class="tx-result is-paid">' + (celebrate ? confettiHtml() : '') +
+        '<div class="tx-result-body">' +
+        '<svg class="tick-draw" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="23"/><path d="M15 27l7 7 15-16"/></svg>' +
+        '<h3>Payment confirmed</h3>' +
+        '<p>Welcome to Pulse Forge, ' + PF.esc(pay.name) + '! Your membership <strong>' + PF.esc(pay.memberId) + '</strong> is now paid. ' +
+        'Bring your member ID on your first day. See you on the floor!</p></div></div>';
+    } else if (state === 'rejected') {
+      html = '<div class="tx-result is-problem"><div class="tx-result-body">' +
+        '<span class="tx-result-icon">' + PF.icon('alert') + '</span>' +
+        '<h3>Payment problem: ' + PF.esc(reason || 'we could not confirm this payment') + '.</h3>' +
+        '<p>Please contact us on WhatsApp.</p>' +
+        '<p class="btn-row"><a class="btn btn-primary" href="' + whatsappLink() + '" target="_blank" rel="noopener">Chat on WhatsApp (' + PF.esc(PHONE_TEXT) + ')</a></p>' +
+        '<p class="muted small">Pasted the wrong transaction ID? You can paste the correct one above and press Submit again.</p>' +
+        '</div></div>';
+    } else {
+      html = '<div class="tx-result is-waiting"><div class="tx-result-body">' +
+        '<span class="tx-result-icon">' + PF.icon('clock') + '</span>' +
+        (state === 'manual'
+          ? '<h3>We are checking your payment by hand.</h3><p>We will confirm soon. Your member ID is <strong>' + PF.esc(pay.memberId) + '</strong>.</p>'
+          : '<h3>Still waiting for the blockchain.</h3><p>We will keep checking and confirm soon. You can close this page. Your member ID is <strong>' + PF.esc(pay.memberId) + '</strong>.</p>') +
+        '</div></div>';
+    }
+    box.innerHTML = html;
+    box.hidden = false;
+    var confetti = box.querySelector('.confetti');
+    if (confetti) setTimeout(function () { if (confetti.parentNode) confetti.parentNode.removeChild(confetti); }, 4500);
+  }
+
   function paintTx(pay) {
-    var done = !!pay.txSent;
-    $('txForm').hidden = done;
-    $('txDone').hidden = !done;
-    if (done) $('txDoneId').textContent = pay.memberId;
+    var state = txState(pay);
+    $('txChecking').hidden = true;
+    // The box stays open after a problem, so a corrected TxID can be sent.
+    $('txForm').hidden = state === 'paid' || state === 'waiting' || state === 'manual';
+    paintResult(state, pay.txReason, pay, false);
   }
 
   function normTxid(v) {
@@ -437,14 +500,33 @@
       return;
     }
     var btn = $('txBtn');
-    setBusy(btn, true, 'Sending...');
-    sendToSheet({ action: 'txid', company_website: '', memberId: pay.memberId, phone: pay.phone, txid: tx })
-      .then(function () {
+    setBusy(btn, true, 'Checking...');
+    // "Checking the blockchain..." animation (shown for at least a moment so it can be read).
+    $('txForm').hidden = true;
+    paintResult('', '', pay, false);
+    $('txChecking').hidden = false;
+    var shownAt = Date.now();
+    var atLeast = function (value) {
+      var wait = Math.max(0, 1600 - (Date.now() - shownAt));
+      return new Promise(function (resolve) { setTimeout(function () { resolve(value); }, wait); });
+    };
+
+    sendToSheet({ action: 'txid', company_website: '', memberId: pay.memberId, phone: pay.phone, txid: tx }, 60000)
+      .then(atLeast)
+      .then(function (res) {
+        var state = ['paid', 'rejected', 'waiting', 'manual'].indexOf(res.status) >= 0 ? res.status : 'waiting';
         pay.txSent = true;
+        pay.txStatus = state;
+        pay.txReason = res.reason || '';
         PF.store.set(PAY_KEY, pay);
-        paintTx(pay);
+        $('txChecking').hidden = true;
+        $('txForm').hidden = state !== 'rejected';
+        paintResult(state, pay.txReason, pay, true);
+        $('txResult').scrollIntoView({ block: 'center', behavior: PF.reduce() ? 'auto' : 'smooth' });
       })
       .catch(function (err) {
+        $('txChecking').hidden = true;
+        $('txForm').hidden = false;
         if (err && err.code === 'NOT_CONNECTED') {
           showAlert(out, 'warn', 'The form is not connected yet.', 'The owner still needs to finish the Google Sheet setup.');
         } else if (err && err.code === 'SERVER' && err.message && err.message !== 'SERVER') {
@@ -463,6 +545,9 @@
     $('joinSection').hidden = false;
     $('txid').value = '';
     $('txAlert').hidden = true;
+    $('txChecking').hidden = true;
+    $('txForm').hidden = false;
+    paintResult('', '', {}, false);
     form.reset();
     paintCost();
     window.scrollTo({ top: $('joinSection').offsetTop - 80, behavior: PF.reduce() ? 'auto' : 'smooth' });

@@ -211,10 +211,12 @@
                 <button class="btn btn-primary" type="submit" id="txBtn">Submit</button>
               </div>
             </form>
-            <div class="alert alert-ok" id="txDone" hidden style="margin-top:14px">
-              <strong>Got it! We received your transaction ID for <span id="txDoneId"></span>.</strong>
-              <span>We will check the payment and confirm your membership. You can also call us on <span data-phone>0300 0000000</span>.</span>
+            <div class="tx-checking" id="txChecking" role="status" hidden>
+              <div class="pulse-line" aria-hidden="true"></div>
+              <p class="tx-checking-text"><span class="spinner" aria-hidden="true"></span> Checking the blockchain...</p>
+              <p class="muted small">This can take up to a minute. Please keep this page open.</p>
             </div>
+            <div id="txResult" aria-live="polite" hidden></div>
           </div>
 
           <p style="margin-top:20px"><button type="button" class="link-btn" id="newApplication">Start a new application</button></p>

@@ -395,6 +395,42 @@ fieldset { border: 0; padding: 0; margin: 0 0 16px; min-width: 0; }
 .tx-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
 .tx-row .input { flex: 1 1 280px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92rem; }
 
+/* Blockchain check: "checking" animation and the result boxes */
+.tx-checking { margin-top: 14px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); text-align: center; }
+.tx-checking .pulse-line { height: 56px; margin-bottom: 6px; }
+.tx-checking .pulse-line::before { animation-duration: 2.2s; }
+.tx-checking-text { font: 800 1.5rem var(--font-display); text-transform: uppercase; letter-spacing: .06em; margin: 0 0 4px; display: inline-flex; align-items: center; gap: 10px; }
+.tx-checking-text .spinner { color: var(--accent); }
+.tx-checking .small { margin: 0; }
+#txResult { margin-top: 14px; }
+.tx-result { position: relative; overflow: hidden; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); padding: 22px; }
+.tx-result-body { position: relative; z-index: 1; }      /* text always sits above the confetti */
+.tx-result h3 { margin: 8px 0 6px; }
+.tx-result p { margin: 0 0 8px; }
+.tx-result p:last-child { margin-bottom: 0; }
+.tx-result-icon { display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; }
+.tx-result-icon .ico { width: 26px; height: 26px; }
+.tx-result.is-paid { border-color: var(--accent); background: radial-gradient(420px 200px at 50% 0%, rgba(200, 255, 31, .16), transparent 70%), var(--bg); text-align: center; }
+.tx-result.is-paid h3 { color: var(--accent); font-size: clamp(1.9rem, 5vw, 2.6rem); }
+.tx-result.is-waiting { border-color: rgba(255, 178, 31, .5); }
+.tx-result.is-waiting .tx-result-icon { background: rgba(255, 178, 31, .12); color: var(--warn); }
+.tx-result.is-problem { border-color: var(--danger); background: rgba(255, 106, 95, .07); }
+.tx-result.is-problem .tx-result-icon { background: rgba(255, 106, 95, .14); color: var(--danger); }
+.tx-result.is-problem h3 { color: #ffb3ad; }
+.tick-draw { width: 72px; height: 72px; display: block; margin: 0 auto; }
+.tick-draw circle { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 150; stroke-dashoffset: 150; animation: draw .7s ease-out forwards; }
+.tick-draw path { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 40; stroke-dashoffset: 40; animation: draw .45s .55s ease-out forwards; }
+.confetti { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.confetti i { position: absolute; top: -14px; left: var(--x); width: 8px; height: 13px; border-radius: 2px; background: var(--c); opacity: 0;
+  animation: confettiFall var(--t) var(--d) cubic-bezier(.25, .6, .4, 1) forwards; }
+.confetti i:nth-child(3n) { width: 7px; height: 7px; border-radius: 50%; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes confettiFall {
+  0% { opacity: 1; transform: translateY(0) rotate(0); }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(320px) rotate(var(--r)); }
+}
+
 /* ---------- 11. Contact & FAQ ---------- */
 .contact-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
 .info-card { display: flex; gap: 16px; align-items: flex-start; }
@@ -485,4 +521,6 @@ fieldset { border: 0; padding: 0; margin: 0 0 16px; min-width: 0; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .stage-ring { display: none; }
   .tilt:hover { transform: none !important; }
+  .tick-draw circle, .tick-draw path { stroke-dashoffset: 0; }   /* show the tick without drawing it */
+  .confetti { display: none; }
 }
