@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Timings &amp; Classes | Pulse Forge Fitness</title>
+  <meta name="description" content="Pulse Forge Fitness timings in Pakistan time: ladies only 10 AM to 4 PM, break 4 to 5 PM, everyone 5 PM to 1 AM. See the weekly class timetable.">
+  <meta name="theme-color" content="#0d0e10">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+  <script defer src="js/config.js"></script>
+  <script defer src="js/utils.js"></script>
+  <script defer src="js/icons.js"></script>
+  <script defer src="js/status.js"></script>
+  <script defer src="js/classes.js"></script>
+  <script defer src="js/main.js"></script>
+</head>
+<body data-page="timings">
+  <a class="skip" href="#main">Skip to content</a>
+
+  <div class="topbar"><div class="container">
+    <div class="status" data-status role="status"></div>
+    <a class="topbar-phone" data-tel href="tel:03000000000"><span data-icon="phone"></span><span data-phone>0300 0000000</span></a>
+  </div></div>
+
+  <header class="site-header"><div class="container">
+    <a class="brand" href="index.html" aria-label="Pulse Forge Fitness - home"><span data-logo></span><span class="brand-text">Pulse Forge<small>Fitness</small></span></a>
+    <button class="nav-toggle" id="navToggle" type="button" aria-controls="siteNav" aria-expanded="false" aria-label="Open menu"></button>
+    <nav id="siteNav" aria-label="Main">
+      <a data-nav="home" href="index.html">Home</a>
+      <a data-nav="membership" href="membership.html">Membership</a>
+      <a data-nav="timings" href="timings.html">Timings &amp; Classes</a>
+      <a data-nav="trainers" href="trainers.html">Trainers</a>
+      <a data-nav="contact" href="contact.html">Contact</a>
+      <a class="btn btn-primary" href="membership.html">Join now</a>
+    </nav>
+  </div></header>
+
+  <main id="main">
+    <section class="page-hero">
+      <div class="container" data-hero>
+        <p class="eyebrow">Timings &amp; Classes</p>
+        <h1>Train when <span class="accent">it suits you.</span></h1>
+        <p class="lead">Open 7 days a week. All times are Pakistan time.</p>
+        <div class="status status-big" data-status role="status"></div>
+      </div>
+      <div class="pulse-line" aria-hidden="true"></div>
+    </section>
+
+    <section class="section" aria-labelledby="slotsTitle" style="padding-top:24px">
+      <div class="container">
+        <h2 id="slotsTitle" class="sr-only">Daily timings</h2>
+        <div class="slots" data-stagger>
+          <div class="slot tilt" data-slot-row="ladies"><span class="now-tag" hidden>Now</span><div class="slot-icon"><span data-icon="venus"></span></div><h3>Ladies only</h3><p class="slot-time">10 AM - 4 PM</p><p>Only ladies and female trainers on the floor. A calm, comfortable space.</p></div>
+          <div class="slot tilt is-break" data-slot-row="break"><span class="now-tag" hidden>Now</span><div class="slot-icon"><span data-icon="clock"></span></div><h3>Break (closed)</h3><p class="slot-time">4 PM - 5 PM</p><p>We close for cleaning and a short rest. See you at 5 PM!</p></div>
+          <div class="slot tilt" data-slot-row="open"><span class="now-tag" hidden>Now</span><div class="slot-icon"><span data-icon="users"></span></div><h3>Everyone</h3><p class="slot-time">5 PM - 1 AM</p><p>Men and women are both welcome. Our busiest and liveliest time.</p></div>
+        </div>
+        <div class="days-note" data-reveal>
+          <span class="pill pill-ladies">Monday to Sunday</span>
+          <span class="pill">Closed from 1 AM to 10 AM</span>
+          <span class="pill">Lockers available</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="pulse-line is-faint is-slow" aria-hidden="true"></div>
+
+    <section class="section alt" aria-labelledby="ttTitle">
+      <div class="container">
+        <div class="section-head" data-reveal>
+          <p class="eyebrow">Weekly timetable</p>
+          <h2 id="ttTitle">Find your class</h2>
+          <p class="lead">Use the filters to show only the classes you like. Class names and times are examples for this demo.</p>
+        </div>
+
+        <div class="filter-bar" data-reveal>
+          <div class="filter-group">
+            <span class="label" id="audLabel">Who is it for?</span>
+            <div class="chips" id="audFilters" role="group" aria-labelledby="audLabel">
+              <button type="button" class="chip is-on" data-aud="all" aria-pressed="true">All</button>
+              <button type="button" class="chip" data-aud="ladies" aria-pressed="false">Ladies only</button>
+              <button type="button" class="chip" data-aud="everyone" aria-pressed="false">Everyone</button>
+            </div>
+          </div>
+          <div class="filter-group">
+            <span class="label" id="typeLabel">Class type</span>
+            <div class="chips" id="typeFilters" role="group" aria-labelledby="typeLabel"></div>
+          </div>
+          <div class="filter-foot">
+            <span id="classCount" role="status"></span>
+            <button type="button" class="link-btn" id="resetFilters">Reset filters</button>
+          </div>
+        </div>
+
+        <div class="week" id="timetable"></div>
+      </div>
+    </section>
+
+    <section class="cta-band">
+      <div class="container" data-reveal>
+        <h2>Found a class you like?</h2>
+        <p class="lead">Join today and book your spot on the floor.</p>
+        <a class="btn btn-primary btn-lg" href="membership.html">Join now</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <a class="brand" href="index.html"><span data-logo></span><span class="brand-text">Pulse Forge<small>Fitness</small></span></a>
+          <p style="margin-top:14px">Forge your strongest self.</p>
+        </div>
+        <div><h4>Pages</h4><ul><li><a href="index.html">Home</a></li><li><a href="membership.html">Membership</a></li><li><a href="timings.html">Timings &amp; Classes</a></li><li><a href="trainers.html">Trainers</a></li><li><a href="contact.html">Contact</a></li></ul></div>
+        <div><h4>Timings (PKT)</h4><ul><li>10 AM - 4 PM: Ladies only</li><li>4 PM - 5 PM: Break</li><li>5 PM - 1 AM: Everyone</li><li>Open 7 days a week</li></ul></div>
+        <div><h4>Contact</h4><ul><li>Lahore, Pakistan</li><li><a data-tel href="tel:03000000000" data-phone>0300 0000000</a></li></ul></div>
+      </div>
+      <div class="demo-line"><span><strong>This is a demo website.</strong> Pulse Forge Fitness is a made-up gym.</span><span>&copy; <span data-year>2026</span> Pulse Forge Fitness</span></div>
+    </div>
+  </footer>
+</body>
+</html>

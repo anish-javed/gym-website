@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pulse Forge Fitness | Gym in Lahore</title>
+  <meta name="description" content="Pulse Forge Fitness is a brand-new gym in Lahore with the latest equipment, lockers, ladies-only hours and male and female trainers. Forge your strongest self.">
+  <meta name="theme-color" content="#0d0e10">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+  <script defer src="js/config.js"></script>
+  <script defer src="js/utils.js"></script>
+  <script defer src="js/icons.js"></script>
+  <script defer src="js/status.js"></script>
+  <script defer src="js/classes.js"></script>
+  <script defer src="js/trainers.js"></script>
+  <script defer src="js/bmi.js"></script>
+  <script defer src="js/home.js"></script>
+  <script defer src="js/main.js"></script>
+</head>
+<body data-page="home">
+  <a class="skip" href="#main">Skip to content</a>
+
+  <div class="topbar"><div class="container">
+    <div class="status" data-status role="status"></div>
+    <a class="topbar-phone" data-tel href="tel:03000000000"><span data-icon="phone"></span><span data-phone>0300 0000000</span></a>
+  </div></div>
+
+  <header class="site-header"><div class="container">
+    <a class="brand" href="index.html" aria-label="Pulse Forge Fitness - home"><span data-logo></span><span class="brand-text">Pulse Forge<small>Fitness</small></span></a>
+    <button class="nav-toggle" id="navToggle" type="button" aria-controls="siteNav" aria-expanded="false" aria-label="Open menu"></button>
+    <nav id="siteNav" aria-label="Main">
+      <a data-nav="home" href="index.html">Home</a>
+      <a data-nav="membership" href="membership.html">Membership</a>
+      <a data-nav="timings" href="timings.html">Timings &amp; Classes</a>
+      <a data-nav="trainers" href="trainers.html">Trainers</a>
+      <a data-nav="contact" href="contact.html">Contact</a>
+      <a class="btn btn-primary" href="membership.html">Join now</a>
+    </nav>
+  </div></header>
+
+  <main id="main">
+    <!-- HERO -->
+    <section class="hero" aria-labelledby="heroTitle">
+      <div class="container hero-grid">
+        <div data-hero>
+          <p class="eyebrow">Now open in Lahore</p>
+          <h1 id="heroTitle">Forge your <span class="accent">strongest self.</span></h1>
+          <p class="lead">A brand-new gym with fresh, latest equipment, safe lockers, and male and female trainers. Ladies-only hours every day, and open late for everyone.</p>
+          <div class="hero-badges"><div class="status status-big" data-status role="status"></div></div>
+          <div class="btn-row">
+            <a class="btn btn-primary btn-lg" href="membership.html">Join Pulse Forge</a>
+            <a class="btn btn-ghost btn-lg" href="timings.html">See timings &amp; classes</a>
+          </div>
+          <p class="hero-note">
+            <span><span data-icon="locker"></span> Lockers available</span>
+            <span><span data-icon="users"></span> Male &amp; female trainers</span>
+            <span><span data-icon="calendar"></span> Open 7 days</span>
+          </p>
+        </div>
+
+        <div class="hero-stage" aria-hidden="true">
+          <span class="stage-core"></span>
+          <span class="stage-ring"></span><span class="stage-ring r2"></span><span class="stage-ring r3"></span>
+          <div class="floater f1"><div class="floater-spin" data-art="dumbbell"></div></div>
+          <div class="floater f2"><div class="floater-spin" data-art="kettlebell"></div></div>
+          <div class="floater f3"><div class="floater-spin" data-art="kettlebell"></div></div>
+          <div class="floater f4 f-extra"><div class="floater-spin" data-art="dumbbell"></div></div>
+          <div class="floater f5 f-extra"><div class="floater-spin" data-art="dumbbell"></div></div>
+        </div>
+      </div>
+      <div class="pulse-line" aria-hidden="true"></div>
+    </section>
+
+    <!-- NUMBERS -->
+    <section class="stats" aria-label="Pulse Forge in numbers">
+      <div class="container grid grid-4" data-stagger>
+        <div><span class="stat-num" data-count="7">7</span><span class="stat-label">Days a week</span></div>
+        <div><span class="stat-num" data-count="14">14</span><span class="stat-label">Hours open daily</span></div>
+        <div><span class="stat-num" data-trainer-total data-count="8">8</span><span class="stat-label">Expert trainers</span></div>
+        <div><span class="stat-num" data-class-total data-count="44">44</span><span class="stat-label">Classes every week</span></div>
+      </div>
+    </section>
+
+    <!-- WHY US -->
+    <section class="section" aria-labelledby="whyTitle">
+      <div class="container">
+        <div class="section-head" data-reveal>
+          <p class="eyebrow">Why Pulse Forge</p>
+          <h2 id="whyTitle">Built new. Built for you.</h2>
+          <p class="lead">Everything is brand new, clean and ready. No old, worn-out machines.</p>
+        </div>
+        <div class="grid grid-3" data-stagger>
+          <article class="card feature tilt"><div class="feature-icon"><span data-icon="bolt"></span></div><h3>Latest equipment</h3><p>Fresh machines, racks and weights. Every item is brand new and well spaced out.</p></article>
+          <article class="card feature tilt"><div class="feature-icon"><span data-icon="venus"></span></div><h3>Ladies-only hours</h3><p>Every day from 10 AM to 4 PM the gym is just for ladies, with female trainers on the floor.</p></article>
+          <article class="card feature tilt"><div class="feature-icon"><span data-icon="users"></span></div><h3>Male &amp; female trainers</h3><p>Pick the coach you feel most comfortable with. Every trainer is friendly and qualified.</p></article>
+          <article class="card feature tilt"><div class="feature-icon"><span data-icon="locker"></span></div><h3>Lockers</h3><p>Lockers are available so you can train without worrying about your things.</p></article>
+          <article class="card feature tilt"><div class="feature-icon"><span data-icon="moon"></span></div><h3>Open late</h3><p>Work out after office or university. Everyone is welcome from 5 PM until 1 AM.</p></article>
+          <article class="card feature tilt"><div class="feature-icon"><span data-icon="tag"></span></div><h3>Simple pricing</h3><p>One small admission fee and one monthly fee. No hidden charges.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <div class="pulse-line is-faint is-slow" aria-hidden="true"></div>
+
+    <!-- EQUIPMENT -->
+    <section class="section alt" aria-labelledby="equipTitle">
+      <div class="container">
+        <div class="section-head" data-reveal>
+          <p class="eyebrow">The gear</p>
+          <h2 id="equipTitle">Meet the equipment</h2>
+          <p class="lead">Hover over a card (or tap it on your phone) to flip it and see the details.</p>
+        </div>
+        <div class="grid grid-3" id="equipGrid" data-stagger></div>
+      </div>
+    </section>
+
+    <div class="pulse-line is-faint is-slow" aria-hidden="true"></div>
+
+    <!-- TIMINGS -->
+    <section class="section" aria-labelledby="timeTitle">
+      <div class="container">
+        <div class="section-head" data-reveal>
+          <p class="eyebrow">Timings (Pakistan time)</p>
+          <h2 id="timeTitle">Open 7 days a week</h2>
+        </div>
+        <div class="slots" data-stagger>
+          <div class="slot tilt" data-slot-row="ladies"><span class="now-tag" hidden>Now</span><div class="slot-icon"><span data-icon="venus"></span></div><h3>Ladies only</h3><p class="slot-time">10 AM - 4 PM</p><p>The whole gym for ladies, with female trainers.</p></div>
+          <div class="slot tilt is-break" data-slot-row="break"><span class="now-tag" hidden>Now</span><div class="slot-icon"><span data-icon="clock"></span></div><h3>Break</h3><p class="slot-time">4 PM - 5 PM</p><p>Closed for cleaning and a short rest.</p></div>
+          <div class="slot tilt" data-slot-row="open"><span class="now-tag" hidden>Now</span><div class="slot-icon"><span data-icon="users"></span></div><h3>Everyone</h3><p class="slot-time">5 PM - 1 AM</p><p>Men and women are both welcome.</p></div>
+        </div>
+        <p style="margin-top:22px" data-reveal><a class="btn btn-ghost" href="timings.html">View the weekly class timetable</a></p>
+      </div>
+    </section>
+
+    <!-- FEES -->
+    <section class="section alt" aria-labelledby="feeTitle">
+      <div class="container">
+        <div class="section-head" data-reveal>
+          <p class="eyebrow">Fees</p>
+          <h2 id="feeTitle">Clear, simple pricing</h2>
+        </div>
+        <div class="fee-grid" data-stagger>
+          <div class="card fee tilt"><h3>Admission</h3><span class="price">Rs 2,000</span><p>One time only</p></div>
+          <div class="card fee tilt"><h3>Membership</h3><span class="price">Rs 5,000 <small>/ month</small></span><p>Every month you train</p></div>
+        </div>
+        <p style="margin-top:24px" data-reveal><a class="btn btn-primary btn-lg" href="membership.html">Work out your total &amp; join</a></p>
+      </div>
+    </section>
+
+    <div class="pulse-line is-faint is-slow" aria-hidden="true"></div>
+
+    <!-- BMI -->
+    <section class="section" id="bmi" aria-labelledby="bmiTitle">
+      <div class="container">
+        <div class="section-head" data-reveal>
+          <p class="eyebrow">Free tool</p>
+          <h2 id="bmiTitle">BMI &amp; daily calorie calculator</h2>
+          <p class="lead">Find out where you are today and how much to eat to reach your goal.</p>
+        </div>
+        <div class="calc">
+          <form class="card" id="bmiForm" novalidate data-reveal>
+            <fieldset>
+              <legend class="legend">I am</legend>
+              <div class="choices">
+                <label class="choice"><input type="radio" name="bmiSex" value="female"><span><span data-icon="venus" class="ico-sm"></span>Female</span></label>
+                <label class="choice"><input type="radio" name="bmiSex" value="male"><span><span data-icon="mars" class="ico-sm"></span>Male</span></label>
+              </div>
+            </fieldset>
+            <div class="row-2">
+              <div class="field"><label for="bmiAge">Age (years)</label><input class="input" id="bmiAge" type="number" inputmode="numeric" min="14" max="80" placeholder="e.g. 25"></div>
+              <div class="field"><label for="bmiKg">Weight (kg)</label><input class="input" id="bmiKg" type="number" inputmode="decimal" min="30" max="250" step="0.1" placeholder="e.g. 70"></div>
+            </div>
+            <div class="row-2">
+              <div class="field"><label for="bmiUnit">Height in</label>
+                <select class="input" id="bmiUnit"><option value="ft">Feet &amp; inches</option><option value="cm">Centimetres</option></select></div>
+              <div class="field" id="ftWrap"><label for="bmiFt">Height</label>
+                <div class="row-2"><input class="input" id="bmiFt" type="number" inputmode="numeric" min="3" max="7" placeholder="ft" aria-label="Feet"><input class="input" id="bmiIn" type="number" inputmode="decimal" min="0" max="11.9" step="0.1" placeholder="in" aria-label="Inches"></div></div>
+              <div class="field" id="cmWrap" hidden><label for="bmiCm">Height (cm)</label><input class="input" id="bmiCm" type="number" inputmode="decimal" min="120" max="220" placeholder="e.g. 170"></div>
+            </div>
+            <div class="field"><label for="bmiActivity">How active are you?</label>
+              <select class="input" id="bmiActivity">
+                <option value="1.2">Little or no exercise</option>
+                <option value="1.375">Light (1-3 days a week)</option>
+                <option value="1.55" selected>Moderate (3-5 days a week)</option>
+                <option value="1.725">Hard (6-7 days a week)</option>
+              </select></div>
+            <div class="field"><label for="bmiGoal">My goal</label>
+              <select class="input" id="bmiGoal">
+                <option value="lose">Lose weight</option>
+                <option value="maintain" selected>Stay the same</option>
+                <option value="gain">Build muscle / gain weight</option>
+              </select></div>
+            <p class="err" id="bmiErr" role="alert" hidden></p>
+            <button class="btn btn-primary btn-lg" type="submit">Calculate</button>
+            <p class="disclaimer" style="margin-top:14px">This is a simple guide, not medical advice. If you have a health condition, please ask your doctor first.</p>
+          </form>
+
+          <div class="card gauge-wrap" data-reveal>
+            <div class="gauge" id="gauge"></div>
+            <div class="bmi-readout"><span class="bmi-number" id="bmiValue" aria-hidden="true">--</span></div>
+            <p class="gauge-empty" id="gaugeHint">Fill in the form and press Calculate to see your gauge move.</p>
+            <p class="sr-only" id="gaugeLive" role="status"></p>
+            <div id="bmiResult" hidden>
+              <p class="bmi-cat" id="bmiCat"></p>
+              <div class="result-stats">
+                <div><b id="calValue">0</b><span>Calories a day</span></div>
+                <div><b id="proteinValue">0 g</b><span>Protein a day</span></div>
+                <div><b id="bmiRange">-</b><span>Healthy weight</span></div>
+              </div>
+              <p class="advice" id="bmiAdvice"></p>
+              <p style="margin:16px 0 0"><a class="btn btn-ghost" href="trainers.html">Ask a trainer to help</a></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta-band" aria-labelledby="ctaTitle">
+      <div class="container" data-reveal>
+        <h2 id="ctaTitle">Your first rep starts here.</h2>
+        <p class="lead">Join Pulse Forge Fitness today and forge your strongest self.</p>
+        <a class="btn btn-primary btn-lg" href="membership.html">Become a member</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <a class="brand" href="index.html"><span data-logo></span><span class="brand-text">Pulse Forge<small>Fitness</small></span></a>
+          <p style="margin-top:14px">Forge your strongest self.</p>
+        </div>
+        <div><h4>Pages</h4><ul><li><a href="index.html">Home</a></li><li><a href="membership.html">Membership</a></li><li><a href="timings.html">Timings &amp; Classes</a></li><li><a href="trainers.html">Trainers</a></li><li><a href="contact.html">Contact</a></li></ul></div>
+        <div><h4>Timings (PKT)</h4><ul><li>10 AM - 4 PM: Ladies only</li><li>4 PM - 5 PM: Break</li><li>5 PM - 1 AM: Everyone</li><li>Open 7 days a week</li></ul></div>
+        <div><h4>Contact</h4><ul><li>Lahore, Pakistan</li><li><a data-tel href="tel:03000000000" data-phone>0300 0000000</a></li></ul></div>
+      </div>
+      <div class="demo-line"><span><strong>This is a demo website.</strong> Pulse Forge Fitness is a made-up gym.</span><span>&copy; <span data-year>2026</span> Pulse Forge Fitness</span></div>
+    </div>
+  </footer>
+</body>
+</html>
