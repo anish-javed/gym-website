@@ -460,6 +460,12 @@ fieldset { border: 0; padding: 0; margin: 0 0 16px; min-width: 0; }
 .demo-line { margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; color: var(--muted); font-size: .9rem; }
 .demo-line strong { color: var(--text); }
 
+/* Floating WhatsApp button: a small pill on computers, a small round icon on phones */
+.wa-float { position: fixed; right: 16px; bottom: 16px; z-index: 40; display: inline-flex; align-items: center; gap: 8px; height: 48px; padding: 0 18px 0 14px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: .95rem; text-decoration: none; box-shadow: 0 6px 20px rgba(0, 0, 0, .5), 0 0 0 1px rgba(0, 0, 0, .25); transition: transform .2s ease, box-shadow .2s ease; }
+.wa-float:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(0, 0, 0, .55), 0 0 18px var(--accent-glow); }
+.wa-float:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
+.wa-float .ico { width: 24px; height: 24px; flex: none; }
+
 /* ---------- Keyframes ---------- */
 @keyframes pulseRun { to { transform: translateX(-600px); } }
 @keyframes ringPulse { 0% { transform: scale(.55); opacity: .7; } 100% { transform: scale(1.35); opacity: 0; } }
@@ -508,6 +514,9 @@ fieldset { border: 0; padding: 0; margin: 0 0 16px; min-width: 0; }
   .topbar .topbar-phone { display: none; }
   .result-stats { grid-template-columns: 1fr; }
   .flip { height: 350px; }
+  .wa-float { right: 12px; bottom: 12px; width: 46px; height: 46px; padding: 0; justify-content: center; }
+  .wa-float .wa-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }   /* icon only, still read by screen readers */
+  .site-footer { padding-bottom: 76px; }                       /* room so the button never covers the last line */
 }
 @media (max-width: 400px) {
   .brand-text { font-size: 1.35rem; }

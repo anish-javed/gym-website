@@ -418,11 +418,7 @@
     return pay.txSent ? 'waiting' : '';          // saved by an older version of this page
   }
 
-  function whatsappLink() {
-    var d = String(PHONE_TEXT).replace(/\D/g, '');
-    if (d.charAt(0) === '0') d = '92' + d.slice(1);
-    return 'https://wa.me/' + d;
-  }
+  function whatsappLink() { return PF.whatsappLink(); }
 
   function confettiHtml() {
     if (PF.reduce()) return '';

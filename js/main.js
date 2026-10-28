@@ -14,6 +14,19 @@
   document.querySelectorAll('a[data-tel]').forEach(function (a) { a.setAttribute('href', 'tel:' + PHONE_TEXT.replace(/\s+/g, '')); });
   document.querySelectorAll('[data-logo]').forEach(function (el) { el.innerHTML = PF.logoMark(); });
 
+  // Floating WhatsApp button (on every page)
+  if (!document.getElementById('waFloat')) {
+    var wa = document.createElement('a');
+    wa.id = 'waFloat';
+    wa.className = 'wa-float';
+    wa.href = PF.whatsappLink();
+    wa.target = '_blank';
+    wa.rel = 'noopener';
+    wa.setAttribute('aria-label', 'Chat with us on WhatsApp');
+    wa.innerHTML = PF.icon('chat') + '<span class="wa-label">WhatsApp</span>';
+    document.body.appendChild(wa);
+  }
+
   // Mobile menu
   var toggle = document.getElementById('navToggle');
   var nav = document.getElementById('siteNav');

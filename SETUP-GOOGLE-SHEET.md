@@ -17,8 +17,12 @@ You only do this **one time**.
 3. Deploy a **new version** with the **same web address** (see **Updating the script**, near the end).
 4. Do a test payment (see **Step 8**).
 
-Your old rows stay as they are. Three new columns are added at the end by themselves:
-**Check Result**, **Received USDT** and **Check Time**.
+Your old rows stay as they are. New columns are added at the end by themselves:
+**Check Result**, **Received USDT** and **Check Time**, and two **hidden** columns,
+**Join Time (UTC ms)** and **TxID Time (UTC ms)**.
+
+The hidden columns hold the exact moment as a plain number, so the time zone of your sheet can never confuse the
+"sent after joining" check. Please do not delete them. (Old rows without these numbers still work: their Pakistan time text is read as Pakistan time.)
 
 ---
 
@@ -137,7 +141,7 @@ To see that it is on: click the **clock icon (Triggers)** on the left. You shoul
 7. In your wallet app, open the payment and copy the **transaction ID** (Phantom: tap the payment > "View on Solscan" > copy the long ID at the top. You can also paste the whole Solscan link.)
 8. Paste it in the box on the website and press **Submit**. You see "Checking the blockchain..." and then one of:
    - **Payment confirmed** (with a little celebration). The row now says **Paid**. You get an email.
-   - **Still waiting for the blockchain.** The row says **Awaiting check**. Wait 5 to 10 minutes; it becomes **Paid** by itself.
+   - **Still waiting for the blockchain.** The row says **Awaiting check**. Wait 5 to 10 minutes; it becomes **Paid** by itself. (After 2 hours without an answer it becomes **Needs manual check**.)
    - **Payment problem: [reason].** The row says **Rejected** and the reason is in **Check Result**.
 9. Try pasting the **same** transaction ID for a second test member. It must say **Already used**. That is correct.
 
@@ -163,8 +167,8 @@ To see that it is on: click the **clock icon (Triggers)** on the left. You shoul
 | **Pending** | Joined, no TxID yet | Nothing, wait for the member |
 | **Awaiting check** | Not on the blockchain yet. Checked again every 5 minutes | Nothing, wait |
 | **Paid** | Money really arrived. Column "Received USDT" shows how much | Welcome the member! |
-| **Rejected** | Something is wrong. The reason is in **Check Result** (for example "Amount too low", "Wrong wallet", "Not USDT", "Already used", "Sent before joining", "Transaction failed") | The member was asked to contact you on WhatsApp. Talk to them |
-| **Needs manual check** | Still not found after 24 hours, or the check could not decide | Check it yourself on **https://solscan.io** (link in the email), then set Paid or Rejected |
+| **Rejected** | Something is wrong. The reason is in **Check Result** (for example "Amount too low", "Wrong wallet", "Not USDT", "Already used", "Sent before joining", "Transaction failed", "Not a valid transaction ID") | The member was asked to contact you on WhatsApp. Talk to them |
+| **Needs manual check** | Still not found after **2 hours**, or the check could not decide | Check it yourself on **https://solscan.io** (link in the email), then set Paid or Rejected |
 
 You get an email for every **Paid**, **Rejected** and **Needs manual check**. If an email ever fails, the sheet is still updated.
 You can always change the Status by hand with the drop-down.
@@ -228,6 +232,8 @@ The web app URL stays exactly the same. You do not need to change `js/config.js`
 | "Sorry, we could not send your form" | Check the URL ends with `/exec`. Check Step 5 says **Who has access: Anyone**. Deploy again as a **New version**. |
 | No row appears in the sheet | Make sure you made the script from **Extensions > Apps Script inside the sheet** (Step 2). |
 | No email arrives | Look in Spam. The row is still saved even when the email fails. Run `setupSheets` again and allow access. |
+| "Not a valid transaction ID" | The member pasted something that is not a real Solana transaction ID (for example a wallet address). They can copy the ID again and send it again. |
+| "Sent before joining" for a payment made after joining | Update to the newest script (Step 3 and "Updating the script"). The newest script compares exact numbers, not time-zone text. |
 | "Already used" | Another row already has that TxID. Check Result shows which member ID. |
 | Rows stay "Awaiting check" for a long time | Look at **Check Result**. If it says "Could not reach the blockchain", add **RPC_URL** (see above). Also check the timer is on (clock icon > Triggers). |
 | "Payment problem: Not USDT" or "Wrong wallet" | The money was sent as a different token, or to a different address. Look at the TxID on solscan.io. |

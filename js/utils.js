@@ -65,6 +65,13 @@ window.PF = window.PF || {};
     });
   };
 
+  /** WhatsApp chat link for the gym phone number (0300 0000000 -> https://wa.me/923000000000). */
+  PF.whatsappLink = function () {
+    var d = String(PHONE_TEXT).replace(/\D/g, '');
+    if (d.charAt(0) === '0') d = '92' + d.slice(1);
+    return 'https://wa.me/' + d;
+  };
+
   /** Safe browser storage (can be blocked in private windows). */
   PF.store = {
     get: function (k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },

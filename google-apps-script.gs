@@ -14,8 +14,12 @@
  *      Paid               -> the right amount of USDT really arrived in the gym wallet
  *      Rejected           -> something is wrong; the reason is written in "Check Result"
  *      Awaiting check     -> not on the blockchain yet; checked again every 5 minutes
- *      Needs manual check -> still not found after 24 hours; please check it yourself
+ *      Needs manual check -> still not found after 2 hours; please check it yourself
  *    A transaction ID that is already used in another row is rejected ("Already used").
+ *    A text that is not a real transaction ID is rejected at once ("Not a valid transaction ID").
+ *  - Times: the readable times in the sheet are Pakistan time (text). For the checks, the script
+ *    uses two hidden number columns (the exact moment in milliseconds since 1970, UTC), so time
+ *    zones can never cause a wrong "Sent before joining".
  *  - After a row is saved, an email alert goes to the script owner (your own Google account,
  *    found automatically - no email address is written in this file).
  *    If the email fails, the row is still saved.
@@ -29,7 +33,8 @@
  *            Extensions > Apps Script.
  */
 
-var TIME_ZONE = 'Asia/Karachi';      // Pakistan time
+var TIME_ZONE = 'Asia/Karachi';      // Pakistan time (UTC+05:00, no summer time)
+var PAKISTAN_OFFSET_MS = 5 * 3600 * 1000;
 var TAB_NAME = 'Members';
 
 var ADMISSION_FEE = 2000;            // PKR, one time (the script re-calculates the total itself)
@@ -58,12 +63,14 @@ var HEADERS = [
   'TxID Time (Pakistan time)',       // P
   'Check Result',                    // Q
   'Received USDT',                   // R
-  'Check Time (Pakistan time)'       // S
+  'Check Time (Pakistan time)',      // S
+  'Join Time (UTC ms)',              // T (hidden) exact join moment, used for the checks
+  'TxID Time (UTC ms)'               // U (hidden) exact moment the TxID was sent, used for the give-up time
 ];
 var COL = {
   ID: 1, TIME: 2, NAME: 3, PHONE: 4, GENDER: 5, TRAINER: 6, MONTHS: 7, START: 8, TOTAL: 9,
   USDT: 10, TEST: 11, RATE: 12, CONSENT: 13, STATUS: 14, TXID: 15, TXTIME: 16,
-  RESULT: 17, RECEIVED: 18, CHECKTIME: 19
+  RESULT: 17, RECEIVED: 18, CHECKTIME: 19, JOINMS: 20, TXMS: 21
 };
 
 var STATUS_PENDING = 'Pending';
@@ -81,7 +88,7 @@ var USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
 var DEFAULT_RPC_URL = 'https://api.mainnet-beta.solana.com';
 var TOLERANCE_USDT = 0.01;           // a payment may be up to 0.01 USDT short
 var TIME_GRACE_SECONDS = 60;         // blockchain clocks can be a few seconds off
-var GIVE_UP_HOURS = 24;              // after this, "Needs manual check"
+var GIVE_UP_HOURS = 2;               // after this, "Needs manual check"
 var MAX_RUN_MS = 4 * 60 * 1000;      // a 5-minute re-check run stops after 4 minutes
 
 /** Receives the data sent by the website. */
@@ -155,9 +162,11 @@ function handleJoin(p) {
 
   var sheet = getSheet();
   var memberId = nextMemberId(sheet);
-  var timestamp = pakistanNow();
+  var joinedAt = new Date();
+  var timestamp = pakistanNow(joinedAt);
 
   var row = [];
+  for (var c = 0; c < HEADERS.length; c++) row.push('');
   row[COL.ID - 1] = memberId;
   row[COL.TIME - 1] = timestamp;
   row[COL.NAME - 1] = name;
@@ -174,6 +183,7 @@ function handleJoin(p) {
   row[COL.STATUS - 1] = STATUS_PENDING;
   row[COL.TXID - 1] = '';
   row[COL.TXTIME - 1] = '';
+  row[COL.JOINMS - 1] = joinedAt.getTime();      // the exact moment, a plain number (no time zone)
 
   sheet.appendRow(row);
   SpreadsheetApp.flush();     // the row is saved from here on
@@ -253,7 +263,8 @@ function saveSubmittedTxid(memberId, txid, phone) {
   if (String(row[COL.STATUS - 1]) === STATUS_PAID) return { error: 'This membership is already confirmed. Thank you!' };
 
   var member = memberInfo(row);
-  var timestamp = pakistanNow();
+  var now = new Date();
+  var timestamp = pakistanNow(now);
 
   // A transaction ID can be used only once. Do not copy it into this row (the other row keeps it).
   var usedBy = usedInOtherRow(found.values, found.index, txid);
@@ -268,14 +279,14 @@ function saveSubmittedTxid(memberId, txid, phone) {
     return { member: member, outcome: { state: 'rejected', reason: 'Already used' } };
   }
 
-  // A new TxID starts a new 24-hour waiting time. The same TxID again just checks again.
+  // A new TxID starts a new 2-hour waiting time. The same TxID again just checks again.
   var cells = [
     [COL.STATUS, STATUS_AWAITING],
     [COL.RESULT, 'Checking the blockchain...'],
     [COL.CHECKTIME, timestamp]
   ];
   if (String(row[COL.TXID - 1]) !== txid) {
-    cells.push([COL.TXID, txid], [COL.TXTIME, timestamp], [COL.RECEIVED, '']);
+    cells.push([COL.TXID, txid], [COL.TXTIME, timestamp], [COL.TXMS, now.getTime()], [COL.RECEIVED, '']);
   }
   writeCells(sheet, found.sheetRow, cells);
   SpreadsheetApp.flush();     // saved
@@ -306,6 +317,10 @@ function checkPayment(txid, expectedUsdt, joinMs) {
   try {
     tx = rpcCall('getTransaction', [txid, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0, commitment: 'confirmed' }]);
   } catch (err) {
+    // Solana says the text is not a valid transaction ID ("Invalid param ..."): no need to wait.
+    if (err.rpcCode === -32602 || /invalid param/i.test(String(err.message))) {
+      return { state: 'rejected', reason: 'Not a valid transaction ID', received: 0 };
+    }
     return { state: 'waiting', reason: 'Could not reach the blockchain (' + oneLine(err.message) + ')' };
   }
 
@@ -415,7 +430,7 @@ function saveOutcome(memberId, txid, outcome, fromWebsite) {
 
 /**
  * Re-checks every "Awaiting check" row. Runs every 5 minutes once you run setupAutoCheck().
- * After 24 hours without an answer, the row becomes "Needs manual check".
+ * After 2 hours without an answer, the row becomes "Needs manual check".
  */
 function recheckAwaitingPayments() {
   var started = Date.now();
@@ -438,7 +453,7 @@ function recheckAwaitingPayments() {
     var member = memberInfo(row);
     var outcome = checkPayment(txid, member.expectedUsdt, member.joinMs);
     if (outcome.state === 'waiting') {
-      var since = parsePakistanTime(row[COL.TXTIME - 1]);
+      var since = readMoment(row[COL.TXMS - 1], row[COL.TXTIME - 1]);   // exact moment the TxID was sent
       if (!isFinite(since)) since = member.joinMs;
       if (isFinite(since) && Date.now() - since > GIVE_UP_HOURS * 3600 * 1000) {
         outcome = { state: 'manual', reason: 'Not confirmed after ' + GIVE_UP_HOURS + ' hours (last answer: ' + outcome.reason + ')' };
@@ -483,9 +498,15 @@ function rpcCall(method, params) {
     var res = UrlFetchApp.fetch(getRpcUrl(), options);
     var code = res.getResponseCode();
     if ((code === 429 || code >= 500) && attempt === 1) { Utilities.sleep(1500); continue; }
-    if (code !== 200) throw new Error('RPC answered ' + code);
-    var json = JSON.parse(res.getContentText());
-    if (json.error) throw new Error('RPC error ' + (json.error.message || json.error.code));
+    var json = null;
+    try { json = JSON.parse(res.getContentText()); } catch (ignore) {}
+    if (json && json.error) {
+      // Keep Solana's error code, so the caller can tell "invalid transaction ID" from "service busy".
+      var rpcErr = new Error('RPC error ' + (json.error.message || json.error.code));
+      rpcErr.rpcCode = json.error.code;
+      throw rpcErr;
+    }
+    if (code !== 200 || !json) throw new Error('RPC answered ' + code);
     return json.result;
   }
 }
@@ -564,7 +585,7 @@ function memberInfo(row) {
     phone: row[COL.PHONE - 1],
     expectedUsdt: Number(row[COL.USDT - 1]),
     test: String(row[COL.TEST - 1]) === 'Yes',
-    joinMs: parsePakistanTime(row[COL.TIME - 1])
+    joinMs: readMoment(row[COL.JOINMS - 1], row[COL.TIME - 1])
   };
 }
 
@@ -573,12 +594,34 @@ function writeCells(sheet, sheetRow, cells) {
   cells.forEach(function (c) { sheet.getRange(sheetRow, c[0]).setValue(c[1]); });
 }
 
-/** "2026-10-27 18:05:00" (Pakistan time) -> milliseconds. Pakistan is UTC+5 all year. */
+/**
+ * The exact moment of an event, in milliseconds since 1970 (UTC).
+ * Uses the hidden number column when it has a value. Older rows do not have one, so then
+ * the Pakistan time text is read instead (see parsePakistanTime).
+ */
+function readMoment(msValue, pakistanText) {
+  var ms = Number(msValue);
+  if (msValue !== '' && msValue !== null && msValue !== undefined && isFinite(ms) && ms > 0) return ms;
+  return parsePakistanTime(pakistanText);
+}
+
+/**
+ * "2026-10-27 18:05:00" written in Pakistan time -> milliseconds since 1970 (UTC).
+ * The text is always read as UTC+05:00, never in the computer's or the spreadsheet's time zone.
+ */
 function parsePakistanTime(value) {
-  if (value instanceof Date) return value.getTime();
-  var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(value || ''));
+  var text;
+  if (value instanceof Date) {
+    // Google Sheets turned the text into a real date, reading it in the spreadsheet's time zone.
+    // Write that date back as the same text the sheet shows, then read that text as Pakistan time.
+    text = Utilities.formatDate(value, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+  } else {
+    text = String(value || '');
+  }
+  var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(text);
   if (!m) return NaN;
-  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4] - 5, +m[5], +(m[6] || 0));
+  // Date.UTC reads the numbers as UTC, so take away Pakistan's 5 hours to get the true moment.
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) - PAKISTAN_OFFSET_MS;
 }
 
 /* ------------------------------------------------------------------ */
@@ -601,14 +644,18 @@ function getSheet() {
       sheet.getRange(2, c, sheet.getMaxRows() - 1, 1).setNumberFormat('@');
     });
     setStatusDropdown(sheet);
+    sheet.getRange(2, COL.JOINMS, sheet.getMaxRows() - 1, 2).setNumberFormat('0');
     sheet.autoResizeColumns(1, HEADERS.length);
+    sheet.hideColumns(COL.JOINMS, 2);       // the two exact-time columns stay hidden
   } else if (sheet.getLastColumn() < HEADERS.length) {
     var from = sheet.getLastColumn() + 1;
     sheet.getRange(1, from, 1, HEADERS.length - from + 1).setValues([HEADERS.slice(from - 1)])
       .setFontWeight('bold').setBackground('#0B0C0D').setFontColor('#C8FF1F');
     sheet.getRange(2, COL.CHECKTIME, sheet.getMaxRows() - 1, 1).setNumberFormat('@');
     setStatusDropdown(sheet);     // adds "Needs manual check" to the list
+    sheet.getRange(2, COL.JOINMS, sheet.getMaxRows() - 1, 2).setNumberFormat('0');
     sheet.autoResizeColumns(from, HEADERS.length - from + 1);
+    sheet.hideColumns(COL.JOINMS, 2);       // the two exact-time columns stay hidden
   }
   return sheet;
 }
@@ -640,8 +687,8 @@ function sendOwnerEmail(subject, body) {
   MailApp.sendEmail(owner, subject, body);
 }
 
-function pakistanNow() {
-  return Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
+function pakistanNow(date) {
+  return Utilities.formatDate(date || new Date(), TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
 }
 
 function digits(value) {
